@@ -40,6 +40,11 @@ U8G2_SH1106_128X64_NONAME_2_HW_I2C u8g2(U8G2_R0, -1, A5, A4);
 bool game_over = false;
 bool white_turn = true;
 
+// ===== CURSOR & SELECTION =====
+int cursor_col = 0, cursor_row = 7;
+int sel_col = -1, sel_row = -1;
+bool piece_selected = false;
+
 // ===== SPRITES =====
 
 // WHITE PIECES
@@ -105,35 +110,62 @@ void draw_game_board() {
   u8g2.drawFrame(0, 0, 65, 64);
 }
 
-void draw_pieces(){
-  // WHITE PIECES (bottom row)
-  u8g2.drawXBMP(0, 0, piece_size, piece_size, white_rook);
-  u8g2.drawXBMP(block_size , 0, piece_size, piece_size, white_knight);
-  u8g2.drawXBMP(block_size * 2, 0, piece_size, piece_size, white_bishop);
-  u8g2.drawXBMP(block_size * 3, 0, piece_size, piece_size, white_queen);
-  u8g2.drawXBMP(block_size * 4, 0, piece_size, piece_size, white_king);
-  u8g2.drawXBMP(block_size * 5, 0, piece_size, piece_size, white_bishop);
-  u8g2.drawXBMP(block_size * 6, 0, piece_size, piece_size, white_knight);
-  u8g2.drawXBMP(block_size * 7, 0, piece_size, piece_size, white_rook);
-    
-  // WHITE PAWNS
-  for(int I = 0; I < 8; I++) {
-    u8g2.drawXBMP(I * block_size, block_size, piece_size, piece_size, white_pawn);
+
+void draw_piece_at(int row, int col, int piece){
+  int draw_x = col * block_size;
+  int draw_y = row * block_size;
+
+  const unsigned char* piece_bitmap = nullptr;
+
+  switch (piece) {
+    case WHITE_PAWN:
+        piece_bitmap = white_pawn;
+      break;
+    case WHITE_ROOK:
+        piece_bitmap = white_rook;
+      break;
+    case WHITE_KNIGHT:
+        piece_bitmap = white_knight;
+      break;
+    case WHITE_BISHOP:
+        piece_bitmap = white_bishop;
+      break;
+    case WHITE_QUEEN:
+        piece_bitmap = white_queen;
+      break;
+    case WHITE_KING:
+        piece_bitmap = white_king;
+      break;
+    case BLACK_PAWN:
+        piece_bitmap = black_pawn;
+      break;
+    case BLACK_ROOK:
+        piece_bitmap = black_rook;
+      break;
+    case BLACK_KNIGHT:
+        piece_bitmap = black_knight;
+      break;
+    case BLACK_BISHOP:
+        piece_bitmap = black_bishop;
+      break;
+    case BLACK_QUEEN:
+        piece_bitmap = black_qween;
+      break;
+    case BLACK_KING:
+        piece_bitmap = black_king;
+      break;
   }
-    
 
-  //BLACK PIECES (buttom row)
-  u8g2.drawXBMP(0,block_size*7, piece_size, piece_size, black_rook);
-  u8g2.drawXBMP(block_size, block_size*7, piece_size, piece_size, black_knight);
-  u8g2.drawXBMP(block_size *2, block_size*7, block_size, block_size, black_bishop);
-  u8g2.drawXBMP(block_size *3, block_size*7, block_size, block_size, black_qween);
-  u8g2.drawXBMP(block_size *4, block_size*7, block_size, block_size, black_king);
-  u8g2.drawXBMP(block_size *5, block_size*7, block_size, block_size, black_bishop);
-  u8g2.drawXBMP(block_size *6, block_size*7, piece_size, piece_size, black_knight);
-  u8g2.drawXBMP(block_size *7, block_size*7, piece_size, piece_size, black_rook);
+  if (piece_bitmap) {
+    u8g2.drawXBMP(draw_x, draw_y, piece_size, piece_size, piece_bitmap);
+  }
+}
 
-  for(int I =0; I<8 ; I++){
-    u8g2.drawXBMP(I*block_size, block_size*6, block_size, block_size, black_pawn);
+void draw_pieces(){
+  for(int row = 0; row <8; row++){
+    for(int col = 0; col <8; col++){
+      draw_piece_at(row, col, board[row][col]);
+    }
   }
 }
 
