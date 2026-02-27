@@ -407,40 +407,50 @@ void check_pawn_promotion(){
   }
 }
 
-bool has_legal_moves(bool white){
-  for(int front_row= 0; front_row < 8; front_row++){
-    for(int front_coloum = 0; front_coloum < 8; front_coloum++){
-      int piece = board[front_row][front_coloum];
+bool has_legal_moves(bool white) {
+  for (int front_row = 0; front_row < 8; front_row++) {
+    for (int front_coloumn = 0; front_coloumn < 8; front_coloumn++) {
+      int piece = board[front_row][front_coloumn];
       if (piece == EMPTY) continue;
-      if (white && piece < 0 ) continue;
+      if (white && piece < 0) continue;
       if (!white && piece > 0) continue;
 
-      //Try all destanation squares
-      for(int target_row = 0; target_row < 8; target_row++){
+      for (int target_row = 0; target_row < 8; target_row++) {
         for (int target_coloumn = 0; target_coloumn < 8; target_coloumn++) {
-          //Quick check -> can't land on own piece
-          int target = board[front_row][front_coloum];
-          if(white && target > 0) continue;
-          if(!white && target < 0 ) continue;
+          int target = board[target_row][target_coloumn];
+          if (white && target > 0) continue;   
+          if (!white && target < 0) continue;
+          if (front_row == target_row && front_coloumn == target_coloumn) continue;  
 
-          //Simulate move
-          board[target_row][target_coloumn] = target;
-          board[front_row][front_coloum] = piece;
+          // Temporarily compute moves for this piece
+          memset(valid_moves, 0, sizeof(valid_moves));
+          
+          bool saved[8][8];
+          memcpy(saved, valid_moves, sizeof(valid_moves));
+          compute_valid_moves(front_row, front_coloumn);
+          bool is_valid = valid_moves[target_row][target_coloumn];
+          memcpy(valid_moves, saved, sizeof(valid_moves));
 
+          // skip illegal moves
+          if (!is_valid) continue; 
+
+          // Simulate
+          board[target_row][target_coloumn] = piece;
+          board[front_row][front_coloumn] = EMPTY;
           bool safe = !in_check(white);
 
-          //Undo 
-          board[front_row][front_coloum] = piece;
-          board[target_row][target_coloumn] = EMPTY;
+          // Undo
+          board[front_row][front_coloumn] = piece;
+          board[target_row][target_coloumn] = target;
 
-          if(safe) return true;
+          if (safe) return true;
         }
       }
     }
-
-    return false;
   }
+  return false;
 }
+
 
 void draw_game_board() {
   // Draw checkerboard pattern O(N)
@@ -533,12 +543,10 @@ void draw_cursor() {
 }
 
 void draw_panel(){
+  u8g2.setFont(u8g2_font_5x7_tr); 
   if(white_turn){
     if (piece_selected) {
-      u8g2.setFont(u8g2_font_5x7_tr);
-
       u8g2.drawStr(67, 35, "SEL:");
-      // Show column letter and row number of selected piece
       char pos[3];
       pos[0] = 'A' + sel_col;
       pos[1] = '0' + (8 - sel_row);
@@ -546,11 +554,11 @@ void draw_panel(){
       u8g2.drawStr(67, 45, pos);
       u8g2.drawStr(67, 55, "->?");
     } else {
-      u8g2.drawStr(67, 35, "PICK");
+      u8g2.drawStr(67, 35, "PICK"); 
       u8g2.drawStr(67, 45, "piece");
     }
   } else {
-    u8g2.drawStr(67, 35, "BLK");   // show whose turn it is
+    u8g2.drawStr(67, 35, "BLK");
     u8g2.drawStr(67, 45, "TURN");
   }
 }
@@ -559,8 +567,12 @@ void draw_game() {
   u8g2.firstPage();
   do {
     draw_game_board();
+
     draw_pieces();
-    draw_cursor();
+    if(white_turn){
+      draw_cursor();
+    }
+
     draw_panel();
 
   } while (u8g2.nextPage());
