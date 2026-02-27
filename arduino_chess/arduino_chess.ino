@@ -45,13 +45,18 @@ int cursor_col = 0, cursor_row = 7;
 int sel_col = -1, sel_row = -1;
 bool piece_selected = false;
 
+//Controls 
+unsigned long las_btn_time =0;
+
+bool valid_moves[8][8] = {};
+
 // ===== SPRITES =====
 
 // WHITE PIECES
 const unsigned char white_knight[] PROGMEM = {0x00,0x7E, 0x83, 0x8A, 0x63, 0x12, 0x13, 0x3E,};
 const unsigned char white_bishop[] PROGMEM = {0x00,0x18, 0x24, 0x72, 0x5A, 0x42, 0x42, 0x7E,};
 const unsigned char white_queen[] PROGMEM = {0x00, 0x5A, 0x7E, 0x24, 0x18, 0x18, 0x24, 0x7E,};
-const unsigned char white_king[] PROGMEM = {0x00, 0x18, 0x3C, 0x18, 0x3C, 0x24, 0x66, 0x7E,};
+const unsigned char white_king[] PROGMEM = {0x00, 0x18, 0x3C, 0x18, 0x3C, 0x24, 0x66, 0xFF,};
 const unsigned char white_pawn[] PROGMEM = {0x00, 0x3C, 0x24, 0x42, 0x42, 0x42, 0x24, 0x7E,};
 const unsigned char white_rook[] PROGMEM = {0x00,0x5A, 0x7E, 0x42, 0x42, 0x42, 0x42,  0x7E,};
 
@@ -62,6 +67,9 @@ const unsigned char black_qween[] PROGMEM = {0x00, 0x5A, 0x7E, 0x3C, 0x18, 0x18,
 const unsigned char black_rook[] PROGMEM = {0x00, 0x5A, 0x7E, 0x7E, 0x7E, 0x7E, 0x7E, 0x7E,};
 const unsigned char black_king[] PROGMEM = {0x00, 0x18, 0x3C, 0x18, 0x3C, 0x3C, 0x7E, 0xFF,};
 const unsigned char black_pawn[] PROGMEM = {0x00, 0x3C, 0x7E, 0x7E, 0x7E, 0x3C, 0x18, 0x7E,};
+
+//Others
+const unsigned char optional_move[] PROGMEM = {0x00, 0x42 , 0x24 , 0x18 , 0x18 , 0x24 , 0x42 , 0x00};
 
 // ===== BOARD STATE =====
 int board[8][8] = {
@@ -78,6 +86,7 @@ int board[8][8] = {
 // ==== FORWARD DECLARATION =====
 void draw_game();
 void draw_game_board();
+void handle_inputs();
 
 void setup() {
   u8g2.begin();
@@ -93,10 +102,164 @@ void setup() {
 
 void loop() {
   if (!game_over) {
+    handle_inputs();
     draw_game();
     delay(100);
   }
 }
+
+void compute_valid_moves(int row, int col) {
+  // Clear first
+  memset(valid_moves, 0, sizeof(valid_moves));
+  
+  int piece = board[row][col];
+  if (piece == 0) return;
+
+  bool is_white = piece > 0;
+
+  switch (piece) {
+    case WHITE_PAWN: {
+      // Move forward (row decreases for white)
+      if (row > 0 && board[row-1][col] == EMPTY) {
+        valid_moves[row-1][col] = true;
+
+        if (row == 6 && board[row-2][col] == EMPTY)
+          valid_moves[row-2][col] = true;
+      }
+      // Captures
+      if (row > 0 && col > 0 && board[row-1][col-1] < 0) valid_moves[row-1][col-1] = true;
+      if (row > 0 && col < 7 && board[row-1][col+1] < 0) valid_moves[row-1][col+1] = true;
+      break;
+    }
+    case BLACK_PAWN: {
+      if (row < 7 && board[row+1][col] == EMPTY) {
+        valid_moves[row+1][col] = true;
+        if (row == 1 && board[row+2][col] == EMPTY)
+          valid_moves[row+2][col] = true;
+      }
+      if (row < 7 && col > 0 && board[row+1][col-1] > 0) valid_moves[row+1][col-1] = true;
+      if (row < 7 && col < 7 && board[row+1][col+1] > 0) valid_moves[row+1][col+1] = true;
+      break;
+    }
+    case WHITE_ROOK: case BLACK_ROOK: {
+      // 4 directions
+      int dirs[4][2] = {{-1,0},{1,0},{0,-1},{0,1}};
+      for (auto& d : dirs) {
+        int r = row + d[0], c = col + d[1];
+        while (r >= 0 && r < 8 && c >= 0 && c < 8) {
+          if (board[r][c] == EMPTY) { valid_moves[r][c] = true; }
+          else { if ((board[r][c] > 0) != is_white) valid_moves[r][c] = true; break; }
+          r += d[0]; c += d[1];
+        }
+      }
+      break;
+    }
+    case WHITE_BISHOP: case BLACK_BISHOP: {
+      int dirs[4][2] = {{-1,-1},{-1,1},{1,-1},{1,1}};
+      for (auto& d : dirs) {
+        int r = row + d[0], c = col + d[1];
+        while (r >= 0 && r < 8 && c >= 0 && c < 8) {
+          if (board[r][c] == EMPTY) { valid_moves[r][c] = true; }
+          else { if ((board[r][c] > 0) != is_white) valid_moves[r][c] = true; break; }
+          r += d[0]; c += d[1];
+        }
+      }
+      break;
+    }
+    case WHITE_QUEEN: case BLACK_QUEEN: {
+      int dirs[8][2] = {{-1,0},{1,0},{0,-1},{0,1},{-1,-1},{-1,1},{1,-1},{1,1}};
+      for (auto& d : dirs) {
+        int r = row + d[0], c = col + d[1];
+        while (r >= 0 && r < 8 && c >= 0 && c < 8) {
+          if (board[r][c] == EMPTY) { valid_moves[r][c] = true; }
+          else { if ((board[r][c] > 0) != is_white) valid_moves[r][c] = true; break; }
+          r += d[0]; c += d[1];
+        }
+      }
+      break;
+    }
+    case WHITE_KNIGHT: case BLACK_KNIGHT: {
+      int jumps[8][2] = {{-2,-1},{-2,1},{2,-1},{2,1},{-1,-2},{-1,2},{1,-2},{1,2}};
+      for (auto& j : jumps) {
+        int r = row + j[0], c = col + j[1];
+        if (r >= 0 && r < 8 && c >= 0 && c < 8) {
+          if (board[r][c] == EMPTY || (board[r][c] > 0) != is_white)
+            valid_moves[r][c] = true;
+        }
+      }
+      break;
+    }
+    case WHITE_KING: case BLACK_KING: {
+      int dirs[8][2] = {{-1,0},{1,0},{0,-1},{0,1},{-1,-1},{-1,1},{1,-1},{1,1}};
+      for (auto& d : dirs) {
+        int r = row + d[0], c = col + d[1];
+        if (r >= 0 && r < 8 && c >= 0 && c < 8) {
+          if (board[r][c] == EMPTY || (board[r][c] > 0) != is_white)
+            valid_moves[r][c] = true;
+        }
+      }
+      break;
+    }
+  }
+}
+
+void handle_inputs() {
+  unsigned long now = millis();
+  if (now - las_btn_time < 150) return;
+
+  bool acted = false;
+
+  if (digitalRead(BTN_UP) == LOW) {
+    if (cursor_row > 0) cursor_row--;
+    acted = true;
+  } else if (digitalRead(BTN_DOWN) == LOW) {
+    if (cursor_row < 7) cursor_row++;
+    acted = true;
+  } else if (digitalRead(BTN_LEFT) == LOW) {
+    if (cursor_col > 0) cursor_col--;
+    acted = true;
+  } else if (digitalRead(BTN_RIGHT) == LOW) {
+    if (cursor_col < 7) cursor_col++;
+    acted = true;
+  } else if (digitalRead(BTN_ACTION) == LOW) {
+    int piece = board[cursor_row][cursor_col];
+    bool is_own = white_turn ? (piece > 0) : (piece < 0);
+
+    if (!piece_selected) {
+      // Only allow selecting own pieces
+      if (piece != EMPTY && is_own) {
+        piece_selected = true;
+        sel_row = cursor_row;
+        sel_col = cursor_col;
+        compute_valid_moves(sel_row, sel_col);
+      }
+    } else {
+      if (cursor_row == sel_row && cursor_col == sel_col) {
+        // Deselect
+        piece_selected = false;
+        sel_row = sel_col = -1;
+        memset(valid_moves, 0, sizeof(valid_moves));
+      } else if (piece != EMPTY && is_own) {
+        // Switch to another own piece
+        sel_row = cursor_row;
+        sel_col = cursor_col;
+        compute_valid_moves(sel_row, sel_col);
+      } else if (valid_moves[cursor_row][cursor_col]) {
+        // Execute move
+        board[cursor_row][cursor_col] = board[sel_row][sel_col];
+        board[sel_row][sel_col] = EMPTY;
+        piece_selected = false;
+        sel_row = sel_col = -1;
+        memset(valid_moves, 0, sizeof(valid_moves));
+        white_turn = !white_turn;
+      }
+    }
+    acted = true;
+  }
+
+  if (acted) las_btn_time = now;
+}
+
 
 void draw_game_board() {
   // Draw checkerboard pattern O(N)
@@ -169,11 +332,53 @@ void draw_pieces(){
   }
 }
 
+void draw_cursor() {
+  // Draw valid move hints as small dots
+  for (int r = 0; r < 8; r++) {
+    for (int c = 0; c < 8; c++) {
+      if (valid_moves[r][c]) {
+        // Small cross in center of square
+        u8g2.drawXBMP(c * block_size, r * block_size , block_size , block_size, optional_move);
+        u8g2.drawXBMP(c * block_size, r * block_size , block_size , block_size, optional_move);
+        u8g2.drawXBMP(c * block_size, r * block_size , block_size , block_size, optional_move);
+        u8g2.drawXBMP(c * block_size, r * block_size , block_size , block_size, optional_move);
+      }
+    }
+  }
+
+  if (piece_selected) {
+    u8g2.drawFrame(sel_col * block_size, sel_row * block_size, block_size, block_size);
+  }
+
+  u8g2.setDrawColor(1);
+  u8g2.drawFrame(cursor_col * block_size, cursor_row * block_size, block_size, block_size);
+}
+
+void draw_panel(){
+  if (piece_selected) {
+    u8g2.setFont(u8g2_font_5x7_tr);
+
+    u8g2.drawStr(67, 35, "SEL:");
+    // Show column letter and row number of selected piece
+    char pos[3];
+    pos[0] = 'A' + sel_col;
+    pos[1] = '0' + (8 - sel_row);
+    pos[2] = '\0';
+    u8g2.drawStr(67, 45, pos);
+    u8g2.drawStr(67, 55, "->?");
+  } else {
+    u8g2.drawStr(67, 35, "PICK");
+    u8g2.drawStr(67, 45, "piece");
+  }
+}
+
 void draw_game() {
   u8g2.firstPage();
   do {
     draw_game_board();
     draw_pieces();
+    draw_cursor();
+    draw_panel();
 
   } while (u8g2.nextPage());
 }
