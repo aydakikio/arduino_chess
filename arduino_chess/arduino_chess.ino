@@ -39,6 +39,8 @@ U8G2_SH1106_128X64_NONAME_2_HW_I2C u8g2(U8G2_R0, -1, A5, A4);
 // ===== GAME STATUS =====
 bool game_over = false;
 bool white_turn = true;
+uint8_t win_state = -1;
+bool still_in_check = false;
 
 // ===== CURSOR & SELECTION =====
 int cursor_col = 0, cursor_row = 7;
@@ -87,6 +89,7 @@ int board[8][8] = {
 void draw_game();
 void draw_game_board();
 void handle_inputs();
+void reset_game();
 
 void setup() {
   u8g2.begin();
@@ -102,10 +105,47 @@ void setup() {
 
 void loop() {
   if (!game_over) {
-    handle_inputs();
+    if(white_turn){
+      handle_inputs();
+    }else{
+      //AI thinks 
+    }
     draw_game();
     delay(100);
+  } else {
+
+    draw_game_over();
+    if(digitalRead(BTN_ACTION)== LOW){
+
+      reset_game();
+
+      delay(200);
+    }
   }
+}
+
+void reset_game(){
+  // Reset everything
+  game_over = false;
+  white_turn = true;
+  piece_selected = false;
+  cursor_row = 7; cursor_col = 0;
+  sel_row = sel_col = -1;
+  win_state = -1;
+  memset(valid_moves, 0, sizeof(valid_moves));
+
+
+  // Restore board
+  int fresh[8][8] = {
+    {BLACK_ROOK,BLACK_KNIGHT,BLACK_BISHOP,BLACK_QUEEN,BLACK_KING,BLACK_BISHOP,BLACK_KNIGHT,BLACK_ROOK},
+    {BLACK_PAWN,BLACK_PAWN,BLACK_PAWN,BLACK_PAWN,BLACK_PAWN,BLACK_PAWN,BLACK_PAWN,BLACK_PAWN},
+    {0,0,0,0,0,0,0,0},{0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0},{0,0,0,0,0,0,0,0},
+    {WHITE_PAWN,WHITE_PAWN,WHITE_PAWN,WHITE_PAWN,WHITE_PAWN,WHITE_PAWN,WHITE_PAWN,WHITE_PAWN},
+    {WHITE_ROOK,WHITE_KNIGHT,WHITE_BISHOP,WHITE_QUEEN,WHITE_KING,WHITE_BISHOP,WHITE_KNIGHT,WHITE_ROOK},
+  };
+
+  memcpy(board, fresh, sizeof(board));
 }
 
 void compute_valid_moves(int row, int col) {
@@ -261,6 +301,127 @@ void handle_inputs() {
 }
 
 
+bool find_king(bool white, int &king_row, int &king_coloumn){
+  int target = white ? WHITE_KING : BLACK_KING;
+
+  for (int row = 0; row < 8; row++) {
+    for (int coloumn = 0; coloumn < 8; coloumn++){
+      if(board[row][coloumn]==target) {
+        king_row = row;
+        king_coloumn = coloumn;
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+bool square_attacked(int row, int coloumn, bool by_white){
+  // Check by pawns
+  if (by_white) {
+    if (row+1 < 8 && coloumn-1 >= 0 && board[row+1][coloumn-1] == WHITE_PAWN) return true;
+    if (row+1 < 8 && coloumn+1 < 8  && board[row+1][coloumn+1] == WHITE_PAWN) return true;
+  } else {
+    if (row-1 >= 0 && coloumn-1 >= 0 && board[row-1][coloumn-1] == BLACK_PAWN) return true;
+    if (row-1 >= 0 && coloumn+1 < 8  && board[row-1][coloumn+1] == BLACK_PAWN) return true;
+  }
+
+
+  // Check by knights
+  int knight_jumps[8][2] = {{-2,-1},{-2,1},{2,-1},{2,1},{-1,-2},{-1,2},{1,-2},{1,2}};
+  int knight = by_white ? WHITE_KNIGHT : BLACK_KNIGHT;
+  for (auto& j : knight_jumps) {
+    int next_row = row+j[0], next_coloumn = coloumn+j[1];
+    if (next_row>=0&&next_row<8&&next_coloumn>=0&&next_coloumn<8 && board[next_row][next_coloumn]==knight) return true;
+  }
+  
+  // Check by rook/queen (straight lines)
+  int straight[4][2] = {{-1,0},{1,0},{0,-1},{0,1}};
+  for (auto& dir : straight) {
+    int next_row = row+dir[0], next_coloumn = coloumn+dir[1];
+    while (next_row>=0&&next_row<8&&next_coloumn>=0&&next_coloumn<8) {
+      if (board[next_row][next_coloumn] != EMPTY) {
+        int p = board[next_row][next_coloumn];
+        if (by_white && (p==WHITE_ROOK||p==WHITE_QUEEN)) return true;
+        if (!by_white && (p==BLACK_ROOK||p==BLACK_QUEEN)) return true;
+        break;
+      }
+      next_row+=dir[0]; next_coloumn+=dir[1];
+    }
+  }
+
+  // Check by bishop/queen (diagonals)
+  int diag[4][2] = {{-1,-1},{-1,1},{1,-1},{1,1}};
+  for (auto& dir : diag) {
+    int next_row = row+dir[0], next_coloumn = coloumn+dir[1];
+    while (next_row>=0&&next_row<8&&next_coloumn>=0&&next_coloumn<8) {
+      if (board[next_row][next_coloumn] != EMPTY) {
+        int p = board[next_row][next_coloumn];
+        if (by_white && (p==WHITE_BISHOP||p==WHITE_QUEEN)) return true;
+        if (!by_white && (p==BLACK_BISHOP||p==BLACK_QUEEN)) return true;
+        break;
+      }
+      next_row+=dir[0]; next_coloumn+=dir[1];
+    }
+  }
+
+  // Check by king
+  int king_dirs[8][2] = {{-1,0},{1,0},{0,-1},{0,1},{-1,-1},{-1,1},{1,-1},{1,1}};
+  int king = by_white ? WHITE_KING : BLACK_KING;
+  for (auto& dir : king_dirs) {
+    int next_row = row+dir[0], next_coloumn = coloumn+dir[1];
+    if (next_row>=0&&next_row<8&&next_coloumn>=0&&next_coloumn<8 && board[next_row][next_coloumn]==king) return true;
+  }
+
+  return false;
+}
+
+bool in_check(bool white) {
+  int king_row, king_coloumn;
+  find_king(white, king_row, king_coloumn);
+  return square_attacked(king_row, king_coloumn, !white);  
+}
+
+void check_pawn_promotion(){
+  for(int coloumn = 0; coloumn < 8; coloumn++){
+    if(board[0][coloumn]==WHITE_PAWN){
+      board[0][coloumn] == WHITE_QUEEN;
+    }
+    if(board[7][coloumn] == BLACK_PAWN){
+      board[7][coloumn] == BLACK_QUEEN;
+    }
+  }
+}
+
+bool has_legal_moves(bool white){
+  for(int front_row= 0; front_row < 8; front_row++){
+    for(int front_coloum = 0; front_coloum < 8; front_coloum++){
+      int piece = board[front_row][front_coloum];
+      if (piece == EMPTY) continue;
+      if (white && piece < 0 ) continue;
+      if (!white && piece > 0) continue;
+
+      //Try all destanation squares
+      for(int target_row = 0; target_row < 8; target_row++){
+        for (int target_coloumn = 0; target_coloumn < 8; target_coloumn++) {
+          //Quick check -> can't land on own piece
+          int target = board[front_row][front_coloum];
+          if(white && target > 0) continue;
+          if(!white && target < 0 ) continue;
+
+          //Simulate move
+          board[target_row][target_coloumn] = piece;
+          board[front_row][front_coloum] = EMPTY;
+
+          if(!still_in_check) return true;
+        }
+      }
+    }
+
+    return false;
+  }
+}
+
 void draw_game_board() {
   // Draw checkerboard pattern O(N)
   for (int row = 0; row < 8; row++) {
@@ -333,7 +494,7 @@ void draw_pieces(){
 }
 
 void draw_cursor() {
-  // Draw valid move hints as small dots
+  // Draw valid move hints
   for (int r = 0; r < 8; r++) {
     for (int c = 0; c < 8; c++) {
       if (valid_moves[r][c]) {
@@ -355,20 +516,22 @@ void draw_cursor() {
 }
 
 void draw_panel(){
-  if (piece_selected) {
-    u8g2.setFont(u8g2_font_5x7_tr);
+  if(white_turn){
+    if (piece_selected) {
+      u8g2.setFont(u8g2_font_5x7_tr);
 
-    u8g2.drawStr(67, 35, "SEL:");
-    // Show column letter and row number of selected piece
-    char pos[3];
-    pos[0] = 'A' + sel_col;
-    pos[1] = '0' + (8 - sel_row);
-    pos[2] = '\0';
-    u8g2.drawStr(67, 45, pos);
-    u8g2.drawStr(67, 55, "->?");
-  } else {
-    u8g2.drawStr(67, 35, "PICK");
-    u8g2.drawStr(67, 45, "piece");
+      u8g2.drawStr(67, 35, "SEL:");
+      // Show column letter and row number of selected piece
+      char pos[3];
+      pos[0] = 'A' + sel_col;
+      pos[1] = '0' + (8 - sel_row);
+      pos[2] = '\0';
+      u8g2.drawStr(67, 45, pos);
+      u8g2.drawStr(67, 55, "->?");
+    } else {
+      u8g2.drawStr(67, 35, "PICK");
+      u8g2.drawStr(67, 45, "piece");
+    }
   }
 }
 
@@ -381,4 +544,24 @@ void draw_game() {
     draw_panel();
 
   } while (u8g2.nextPage());
+}
+
+void draw_game_over(){
+  u8g2.firstPage();
+
+  do {
+    u8g2.setFont(u8g2_font_7x13_tr);
+    if(win_state == 1){
+      u8g2.drawStr(10, 25, "WHITE WINS!");
+    } else if (win_state == 0 ) {
+      u8g2.drawStr(10, 25, "BLACK WINS!");
+    }else {
+      u8g2.drawStr(20, 25, "STALEMATE");
+      u8g2.drawStr(25, 40, "DRAW!");
+    }
+
+    u8g2.setFont(u8g2_font_5x7_tr);
+    u8g2.drawStr(20, 55, "Press ACTION..");
+
+  }while (u8g2.nextPage());
 }
