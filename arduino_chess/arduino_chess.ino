@@ -292,6 +292,20 @@ void handle_inputs() {
         sel_row = sel_col = -1;
         memset(valid_moves, 0, sizeof(valid_moves));
         white_turn = !white_turn;
+
+        check_pawn_promotion();
+
+        if (in_check(white_turn)) {
+          if (!has_legal_moves(white_turn)) {
+            game_over = true;
+            win_state = !white_turn ? 1 : 0;
+          }
+        } else {
+          if (!has_legal_moves(white_turn)) {
+            game_over = true;
+            win_state = 2; 
+          }
+        }
       }
     }
     acted = true;
@@ -385,10 +399,10 @@ bool in_check(bool white) {
 void check_pawn_promotion(){
   for(int coloumn = 0; coloumn < 8; coloumn++){
     if(board[0][coloumn]==WHITE_PAWN){
-      board[0][coloumn] == WHITE_QUEEN;
+      board[0][coloumn] = WHITE_QUEEN;
     }
     if(board[7][coloumn] == BLACK_PAWN){
-      board[7][coloumn] == BLACK_QUEEN;
+      board[7][coloumn] = BLACK_QUEEN;
     }
   }
 }
@@ -413,7 +427,13 @@ bool has_legal_moves(bool white){
           board[target_row][target_coloumn] = piece;
           board[front_row][front_coloum] = EMPTY;
 
-          if(!still_in_check) return true;
+          bool safe = !in_check(white);
+
+          //Undo 
+          board[front_row][front_coloum] = piece;
+          board[target_row][target_coloumn] = EMPTY;
+
+          if(!safe) return false;
         }
       }
     }
