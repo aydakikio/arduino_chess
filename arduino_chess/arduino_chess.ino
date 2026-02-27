@@ -424,8 +424,8 @@ bool has_legal_moves(bool white){
           if(!white && target < 0 ) continue;
 
           //Simulate move
-          board[target_row][target_coloumn] = piece;
-          board[front_row][front_coloum] = EMPTY;
+          board[target_row][target_coloumn] = target;
+          board[front_row][front_coloum] = piece;
 
           bool safe = !in_check(white);
 
@@ -433,7 +433,7 @@ bool has_legal_moves(bool white){
           board[front_row][front_coloum] = piece;
           board[target_row][target_coloumn] = EMPTY;
 
-          if(!safe) return false;
+          if(safe) return true;
         }
       }
     }
@@ -520,9 +520,6 @@ void draw_cursor() {
       if (valid_moves[r][c]) {
         // Small cross in center of square
         u8g2.drawXBMP(c * block_size, r * block_size , block_size , block_size, optional_move);
-        u8g2.drawXBMP(c * block_size, r * block_size , block_size , block_size, optional_move);
-        u8g2.drawXBMP(c * block_size, r * block_size , block_size , block_size, optional_move);
-        u8g2.drawXBMP(c * block_size, r * block_size , block_size , block_size, optional_move);
       }
     }
   }
@@ -552,6 +549,9 @@ void draw_panel(){
       u8g2.drawStr(67, 35, "PICK");
       u8g2.drawStr(67, 45, "piece");
     }
+  } else {
+    u8g2.drawStr(67, 35, "BLK");   // show whose turn it is
+    u8g2.drawStr(67, 45, "TURN");
   }
 }
 
