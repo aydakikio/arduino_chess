@@ -90,6 +90,7 @@ void draw_game();
 void draw_game_board();
 void handle_inputs();
 void reset_game();
+void ai_move();
 
 void setup() {
   u8g2.begin();
@@ -108,7 +109,8 @@ void loop() {
     if(white_turn){
       handle_inputs();
     }else{
-      //AI thinks 
+      draw_game();
+      ai_move(); 
     }
     draw_game();
     delay(100);
@@ -330,6 +332,7 @@ bool find_king(bool white, int &king_row, int &king_coloumn){
 
   return false;
 }
+
 bool square_attacked(int row, int coloumn, bool by_white){
   // Check by pawns
   if (by_white) {
@@ -408,40 +411,40 @@ void check_pawn_promotion(){
 }
 
 bool has_legal_moves(bool white) {
-  for (int front_row = 0; front_row < 8; front_row++) {
-    for (int front_coloumn = 0; front_coloumn < 8; front_coloumn++) {
-      int piece = board[front_row][front_coloumn];
+  for (int from_row = 0; from_row < 8; from_row++) {
+    for (int from_column = 0; from_column < 8; from_column++) {
+      int piece = board[from_row][from_column];
       if (piece == EMPTY) continue;
       if (white && piece < 0) continue;
       if (!white && piece > 0) continue;
 
-      for (int target_row = 0; target_row < 8; target_row++) {
-        for (int target_coloumn = 0; target_coloumn < 8; target_coloumn++) {
-          int target = board[target_row][target_coloumn];
+      for (int to_row = 0; to_row < 8; to_row++) {
+        for (int to_column = 0; to_column < 8; to_column++) {
+          int target = board[to_row][to_column];
           if (white && target > 0) continue;   
           if (!white && target < 0) continue;
-          if (front_row == target_row && front_coloumn == target_coloumn) continue;  
+          if (from_row == to_row && from_column == to_column) continue;  
 
           // Temporarily compute moves for this piece
           memset(valid_moves, 0, sizeof(valid_moves));
           
           bool saved[8][8];
           memcpy(saved, valid_moves, sizeof(valid_moves));
-          compute_valid_moves(front_row, front_coloumn);
-          bool is_valid = valid_moves[target_row][target_coloumn];
+          compute_valid_moves(from_row, from_column);
+          bool is_valid = valid_moves[to_row][to_column];
           memcpy(valid_moves, saved, sizeof(valid_moves));
 
           // skip illegal moves
           if (!is_valid) continue; 
 
           // Simulate
-          board[target_row][target_coloumn] = piece;
-          board[front_row][front_coloumn] = EMPTY;
+          board[to_row][to_column] = piece;
+          board[from_row][from_column] = EMPTY;
           bool safe = !in_check(white);
 
           // Undo
-          board[front_row][front_coloumn] = piece;
-          board[target_row][target_coloumn] = target;
+          board[from_row][from_column] = piece;
+          board[to_row][to_column] = target;
 
           if (safe) return true;
         }
@@ -451,6 +454,130 @@ bool has_legal_moves(bool white) {
   return false;
 }
 
+
+int piece_value(int piece){
+  switch(abs(piece)){
+    case 1: return 10;   // pawn
+    case 2: return 50;   // rook
+    case 3: return 30;   // knight
+    case 4: return 30;   // bishop
+    case 5: return 90;   // queen
+    case 6: return 900; //king
+  }
+
+  return 0;
+}
+
+int evaluate_board(){
+  //Negative numbers are good for black 
+  int score = 0;
+
+  for(int row = 0; row < 8; row++){
+    for(int coloumn =0; coloumn < 8; coloumn++){
+      int piece = board[row][coloumn];
+
+      // white = positive score
+      if(piece > 0){
+        score += piece_value(piece);
+      }
+
+      // black = negative
+      if(piece <0){
+        score -= piece_value(-piece);
+      }
+    }
+  }
+  return score;
+}
+
+int minimax(int depth, bool maximizing){
+  if(depth == 0) return evaluate_board();
+
+  int best = maximizing ? -9999 : 9999; 
+
+  for(int from_row = 0; from_row < 8; from_row++){
+    for(int from_column = 0; from_column < 8; from_column++){
+      if(maximizing && board[from_row][from_column] <= 0) continue;
+      if(!maximizing && board[from_row][from_column] >= 0) continue;
+
+      compute_valid_moves(from_row, from_column);
+
+      for(int to_row = 0; to_row < 8; to_row++){
+        for(int to_column = 0; to_column < 8; to_column++){
+          if(!valid_moves[to_row][to_column]) continue;
+
+          int captured = board[to_row][to_column];
+          board[to_row][to_column] = board[from_row][from_column];
+          board[from_row][from_column] = EMPTY;
+
+          int score = minimax(depth - 1, !maximizing);
+          if(maximizing) best = max(best, score);
+          else           best = min(best, score);
+
+          // Undo
+          board[from_row][from_column] = board[to_row][to_column];  
+          board[to_row][to_column] = captured;                      
+        }
+      }
+    }
+  }
+
+  memset(valid_moves, 0, sizeof(valid_moves));
+  return best;
+}
+
+void ai_move(){
+  int best_score = 9999;
+  int best_from_row = -1, best_from_column = -1, best_to_row = -1, best_to_column = -1;
+
+  for(int from_row = 0; from_row < 8; from_row++){
+    for(int from_column = 0; from_column < 8; from_column++){
+      // black pieces only
+      if(board[from_row][from_column] >= 0) continue; 
+
+      compute_valid_moves(from_row, from_column);  
+
+      for(int to_row = 0; to_row < 8; to_row++){
+        for(int to_column = 0; to_column < 8; to_column++){
+          if(!valid_moves[to_row][to_column]) continue;
+
+          int captured = board[to_row][to_column]; 
+          board[to_row][to_column] = board[from_row][from_column];
+          board[from_row][from_column] = EMPTY;
+
+          int score = minimax(3, true);
+
+          // Undo properly
+          board[from_row][from_column] = board[to_row][to_column];  
+          board[to_row][to_column] = captured;                       
+
+          if(score < best_score){
+            best_score = score;
+            best_from_row = from_row;
+            best_from_column = from_column;
+            best_to_row = to_row;
+            best_to_column = to_column;
+          }
+        }
+      }
+    }
+  }
+
+  memset(valid_moves, 0, sizeof(valid_moves));
+
+  if(best_from_row != -1){ 
+    board[best_to_row][best_to_column] = board[best_from_row][best_from_column];
+    board[best_from_row][best_from_column] = EMPTY;
+    check_pawn_promotion();
+    white_turn = true;
+
+    if(in_check(true)){
+      if(!has_legal_moves(true)){ game_over = true; win_state = 0; }
+    } else {
+      if(!has_legal_moves(true)){ game_over = true; win_state = 2; }
+    }
+  }
+}
 
 void draw_game_board() {
   // Draw checkerboard pattern O(N)
